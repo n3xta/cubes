@@ -102,12 +102,16 @@ function initThree() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf0f0f0); // 稍微灰一点的背景，便于区分
   
-  // Create camera with fixed position - 减少透视效果，拉近相机
-  camera = new THREE.PerspectiveCamera(50, 600 / 300, 0.1, 1000); // 降低FOV从75到50，减少透视变形
-  camera.position.z = 8;
-  camera.position.y = 4;
-  camera.position.x = 0;
-  camera.lookAt(0, 1, 0); // 略微抬高视线
+  // 创建双点透视相机 - 对角线视角
+  camera = new THREE.PerspectiveCamera(45, 600 / 300, 0.1, 1000); 
+  
+  // 将相机放置在对角线上，使其俯视整个场景
+  camera.position.x = 10;
+  camera.position.y = 8;
+  camera.position.z = 12;
+  
+  // 让相机指向场景的中心点稍微偏下的位置
+  camera.lookAt(0, 0, 0);
   console.log("相机位置:", camera.position);
   
   // Create renderer with clear settings
@@ -121,20 +125,29 @@ function initThree() {
   renderer.setPixelRatio(window.devicePixelRatio);
   document.getElementById('three-container').appendChild(renderer.domElement);
   
-  // 隐藏调试元素
-  // axesHelper = new THREE.AxesHelper(10);
-  // scene.add(axesHelper);
-  
-  // gridHelper = new THREE.GridHelper(20, 20, 0x888888, 0x444444);
-  // scene.add(gridHelper);
-  
-  // 自然光照效果
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+  // 增加环境光和定向光，创造更好的阴影效果
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
   
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-  directionalLight.position.set(1, 2, 1);
-  scene.add(directionalLight);
+  const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.5);
+  directionalLight1.position.set(1, 2, 1);
+  scene.add(directionalLight1);
+  
+  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  directionalLight2.position.set(-1, 1, -1);
+  scene.add(directionalLight2);
+  
+  // 为了更好地展示场景，添加一个简单的地板
+  const floorGeometry = new THREE.PlaneGeometry(30, 30);
+  const floorMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xe0e0e0, 
+    roughness: 0.9,
+    metalness: 0.1
+  });
+  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI / 2; // 旋转使其水平
+  floor.position.y = 0;
+  scene.add(floor);
   
   // 创建基于音序器的立方体
   createCubes();
@@ -160,6 +173,20 @@ function createCubes() {
   
   // 创建基于音序器的立方体
   let activeCellCount = 0;
+  
+  // 计算有多少个活跃单元格
+  let totalActiveCells = 0;
+  for(var track = 0; track < nTracks; track++) {
+    for(var step = 0; step < nSteps; step++) {
+      if(cells[track][step] == 1) {
+        totalActiveCells++;
+      }
+    }
+  }
+  
+  // 创建一个存储已使用位置的数组，用于避免方块重叠
+  const usedPositions = [];
+  
   for(var track = 0; track < nTracks; track++) {
     for(var step = 0; step < nSteps; step++) {
       if(cells[track][step] == 1) {
@@ -187,15 +214,41 @@ function createCubes() {
         // 创建网格并放置
         const cube = new THREE.Mesh(geometry, material);
         
-        // 放置在一个网格中，确保可见
-        const spacing = 2; // 间距
-        const maxPerRow = 5; // 每行最多5个
-        const row = Math.floor(activeCellCount / maxPerRow);
-        const col = activeCellCount % maxPerRow;
+        // 随机位置计算 - 在一个圆形区域内随机分布
+        let validPosition = false;
+        let attempts = 0;
+        let xPos, zPos;
+        const maxRadius = 5; // 最大半径
+        const minDistance = 1.2; // 方块之间的最小距离
         
-        const xPos = (col - 2) * spacing;
-        const zPos = -row * spacing; // 视野内分布
+        // 尝试找到一个有效的位置
+        while (!validPosition && attempts < 50) {
+          // 随机角度和半径
+          const angle = Math.random() * Math.PI * 2;
+          const radius = Math.random() * maxRadius;
+          
+          // 将极坐标转换为笛卡尔坐标
+          xPos = Math.cos(angle) * radius;
+          zPos = Math.sin(angle) * radius;
+          
+          // 检查是否与其他方块重叠
+          validPosition = true;
+          for (const pos of usedPositions) {
+            const distance = Math.sqrt(Math.pow(xPos - pos.x, 2) + Math.pow(zPos - pos.z, 2));
+            if (distance < minDistance) {
+              validPosition = false;
+              break;
+            }
+          }
+          
+          attempts++;
+        }
+        
+        // 如果找不到有效位置，就使用最后一次尝试的位置
         const yPos = height / 2; // 立方体底部在地面上
+        
+        // 保存已使用的位置
+        usedPositions.push({ x: xPos, z: zPos });
         
         cube.position.set(xPos, yPos, zPos);
         scene.add(cube);
@@ -370,6 +423,110 @@ function draw(){
   }
 }
 
+// 创建单个立方体的函数
+function createSingleCube(track, step) {
+  // 计算音符属性
+  var notePos = (nTracks - 1) - track;
+  var colorIndex = notePos % 7;
+  
+  // 基于音高决定立方体高度
+  const height = 0.5 + (notePos / nTracks) * 3;
+  const width = 1.2 - (notePos / nTracks) * 0.7;
+  
+  // 创建立方体几何体
+  const geometry = new THREE.BoxGeometry(width, height, width);
+  
+  // 创建材质
+  const baseColor = new THREE.Color(colors[colorIndex]);
+  const material = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    roughness: 0.7,
+    metalness: 0.1
+  });
+  
+  // 创建网格并放置
+  const cube = new THREE.Mesh(geometry, material);
+  
+  // 随机位置计算 - 在一个圆形区域内随机分布
+  let validPosition = false;
+  let attempts = 0;
+  let xPos, zPos;
+  const maxRadius = 5; // 最大半径
+  const minDistance = 1.2; // 方块之间的最小距离
+  
+  // 尝试找到一个有效的位置
+  while (!validPosition && attempts < 50) {
+    // 随机角度和半径
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * maxRadius;
+    
+    // 将极坐标转换为笛卡尔坐标
+    xPos = Math.cos(angle) * radius;
+    zPos = Math.sin(angle) * radius;
+    
+    // 检查是否与其他方块重叠
+    validPosition = true;
+    for (const cube of activeCubes) {
+      if (!cube) continue;
+      const distance = Math.sqrt(
+        Math.pow(xPos - cube.position.x, 2) + 
+        Math.pow(zPos - cube.position.z, 2)
+      );
+      if (distance < minDistance) {
+        validPosition = false;
+        break;
+      }
+    }
+    
+    attempts++;
+  }
+  
+  const yPos = height / 2; // 立方体底部在地面上
+  cube.position.set(xPos, yPos, zPos);
+  scene.add(cube);
+  
+  // 保存引用
+  if (!cubes[track]) cubes[track] = [];
+  cubes[track][step] = cube;
+  activeCubes.push(cube);
+  
+  // 保存原始材质颜色
+  originalMaterials.push({
+    cube: cube,
+    emissive: new THREE.Color(0x000000),
+    color: baseColor
+  });
+  
+  console.log(`创建音符立方体 [${track},${step}]，位置:(${xPos}, ${yPos}, ${zPos})`);
+  return cube;
+}
+
+// 删除单个立方体的函数
+function removeSingleCube(track, step) {
+  const cube = cubes[track][step];
+  if (cube) {
+    // 从场景中移除
+    scene.remove(cube);
+    
+    // 从活跃立方体数组中移除
+    const cubeIndex = activeCubes.indexOf(cube);
+    if (cubeIndex !== -1) {
+      activeCubes.splice(cubeIndex, 1);
+    }
+    
+    // 从原始材质数组中移除
+    const materialIndex = originalMaterials.findIndex(m => m.cube === cube);
+    if (materialIndex !== -1) {
+      originalMaterials.splice(materialIndex, 1);
+    }
+    
+    // 清除引用
+    cubes[track][step] = null;
+    
+    console.log(`删除音符立方体 [${track},${step}]`);
+  }
+}
+
 function mousePressed(){
   // If the mouse is within the bounds of the canvas
   if( l < mouseX && mouseX < l + gridWidth &&
@@ -382,11 +539,20 @@ function mousePressed(){
     var i = floor(y / cellHeight);
     var j = floor(x / cellWidth);
     
-    // Toggle cell on/off
-    cells[i][j] = !cells[i][j];
+    // 检查当前单元格的状态
+    const currentState = cells[i][j];
     
-    // Update the 3D visualization
-    createCubes();
+    // Toggle cell on/off
+    cells[i][j] = !currentState;
+    
+    // 根据新状态添加或删除立方体
+    if (cells[i][j]) {
+      // 添加立方体
+      createSingleCube(i, j);
+    } else {
+      // 删除立方体
+      removeSingleCube(i, j);
+    }
   }
 }
 
