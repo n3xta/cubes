@@ -1,0 +1,19 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#p5-container, #three-container {
+  width: 600px;
+  height: 300px;
+  margin: 10px 0;
+}
+
+canvas {
+  display: block;
+}
