@@ -1,20 +1,20 @@
 // DOM 
 var playButton;
 var tempoSlider;
-var numberOfBarsInput;
-var beatsPerBarInput;
+var randomButton;
+var modal;
+var closeBtn;
+var timeSlider;
+var pitchSlider;
+var timeValue;
+var pitchValue;
+var addNoteBtn;
 
 // Sequencer
-
-// Try changing this number to change the tempo. BPM stands for Beats Per Minute. 
-// 60 BPM means we play one beat every second (since there are 60 seconds in a minute)
 var bpm = 80;
-
-// Try changing these numbers to change the length and structure of your grid
 var numberOfBars = 4;
 var beatsPerBar = 4;
-var splitBeatsInto = 2;
-var nSteps = numberOfBars * beatsPerBar * splitBeatsInto;
+var nSteps = numberOfBars * beatsPerBar;
 var beats = 0;
 
 // Try changing the number of octaves to get more or less notes to choose from
@@ -38,44 +38,94 @@ player.toDestination();
 Tone.Transport.scheduleRepeat(onBeat, "16n");
 updateTempo(bpm);
 
-
-// Visuals
-var t = 30;
-var l = 25;
-var gridWidth, gridHeight, cellWidth, cellHeight;
-var blue;
-var colors = ["#df365d", "#f2924d", "#ebd64e", "#97c348", "#4ab4a1", "#4f64d5", "#bd51a6"];
-
 // Three.js variables
-var scene, camera, renderer;
+var scene, camera, renderer, controls;
+var raycaster = new THREE.Raycaster();
+var mouse = new THREE.Vector2();
 var cubes = [];
 var activeCubes = [];
 var originalMaterials = [];
-
-// 调试变量
-var axesHelper;
-var gridHelper;
-var forceCreateCubes = true;
+var floor;
 
 function setup() {
-  // DOM
-  playButton = createButton("play");
+  // DOM Elements
+  playButton = createButton("<i class='fas fa-play'></i>");
+  playButton.parent('play-button');
+  playButton.addClass('play-btn');
   playButton.mouseClicked(togglePlay);
-  createElement("span", "tempo");
-  tempoSlider = createSlider(20, 240, 60);
+  
+  tempoSlider = createSlider(20, 240, 80);
+  tempoSlider.parent('tempo-slider');
   tempoSlider.input(updateTempo);
+  updateTempo(); // 初始化显示
+  
+  randomButton = select('#random-btn');
+  randomButton.mouseClicked(addRandomNote);
+  
+  // Modal elements
+  modal = select('#note-modal');
+  if (!modal) {
+    console.error("Could not find modal element #note-modal");
+  }
+  
+  closeBtn = select('.close-btn');
+  if (!closeBtn) {
+    console.error("Could not find close button .close-btn");
+  } else {
+    closeBtn.mouseClicked(closeModal);
+  }
+  
+  timeSlider = select('#time-slider');
+  if (!timeSlider) {
+    console.error("Could not find time slider #time-slider");
+  }
+  
+  pitchSlider = select('#pitch-slider');
+  if (!pitchSlider) {
+    console.error("Could not find pitch slider #pitch-slider");
+  }
+  
+  timeValue = select('#time-value');
+  if (!timeValue) {
+    console.error("Could not find time value display #time-value");
+  }
+  
+  pitchValue = select('#pitch-value');
+  if (!pitchValue) {
+    console.error("Could not find pitch value display #pitch-value");
+  }
+  
+  addNoteBtn = select('#add-note-btn');
+  if (!addNoteBtn) {
+    console.error("Could not find add note button #add-note-btn");
+  } else {
+    addNoteBtn.mouseClicked(addNoteFromModal);
+  }
+  
+  timeSlider.input(updateTimeValue);
+  pitchSlider.input(updatePitchValue);
+  
+  // Initialize keyboard visual in the modal
+  createKeyboardVisual();
+  
+  // 添加键盘空格键控制播放/暂停
+  window.addEventListener('keydown', function(e) {
+    if (e.code === 'Space') {
+      e.preventDefault(); // 防止页面滚动
+      togglePlay();
+    }
+    
+    // ESC key to close modal
+    if (e.code === 'Escape' && modal.style('display') === 'flex') {
+      closeModal();
+    }
+  });
   
   // Visuals
-  var p5Canvas = createCanvas(600, 300);
+  var p5Canvas = createCanvas(windowWidth * 0.8, windowHeight * 0.65);
   p5Canvas.parent('p5-container');
-  gridWidth = width - 2*l;
-  gridHeight = height - 2*t;
-  cellWidth = gridWidth / nSteps;
-  cellHeight = gridHeight / nTracks;
-  blue =  color(178, 223, 247);
   
-  // Sequencer
-  // Initialize all sequencer cells.ON: 1. OFF: 0.
+  // Initialize cells array
   for(var track = 0; track < nTracks; track++){
     cells[track] = [];
     for(var step = 0; step < nSteps; step++){
@@ -83,236 +133,413 @@ function setup() {
     }
   }
   
-  // 添加一些默认音符以便测试
-  if (forceCreateCubes) {
-    cells[10][0] = 1;
-    cells[15][4] = 1;
-    cells[20][8] = 1;
-    cells[5][12] = 1;
-  }
-  
   // Initialize Three.js
   initThree();
+  
+  // Add a few random notes at startup for visual appeal
+  for (let i = 0; i < 5; i++) {
+    addRandomNote();
+  }
 }
 
 function initThree() {
-  console.log("初始化Three.js...");
-  
-  // Create scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf0f0f0); // 稍微灰一点的背景，便于区分
+  scene.background = new THREE.Color(0x000000);
   
-  // 创建双点透视相机 - 对角线视角
-  camera = new THREE.PerspectiveCamera(45, 600 / 300, 0.1, 1000); 
-  
-  // 将相机放置在对角线上，使其俯视整个场景
-  camera.position.x = 10;
-  camera.position.y = 8;
-  camera.position.z = 12;
-  
-  // 让相机指向场景的中心点稍微偏下的位置
+  // Create camera
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(15, 12, 18);
   camera.lookAt(0, 0, 0);
-  console.log("相机位置:", camera.position);
   
-  // Create renderer with clear settings
-  renderer = new THREE.WebGLRenderer({ 
+  // Create renderer
+  renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: true,
-    powerPreference: "high-performance" 
+    powerPreference: "high-performance"
   });
-  renderer.setSize(600, 300);
-  renderer.setClearColor(0xf0f0f0, 1);
+  renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
-  document.getElementById('three-container').appendChild(renderer.domElement);
+  const container = document.getElementById('three-container');
+  container.appendChild(renderer.domElement);
   
-  // 增加环境光和定向光，创造更好的阴影效果
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  // Add orbit controls
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.screenSpacePanning = false;
+  controls.minDistance = 10;
+  controls.maxDistance = 50;
+  controls.maxPolarAngle = Math.PI / 2;
+  
+  // Clean up old event listeners if they exist
+  if (renderer.domElement._clickHandler) {
+    renderer.domElement.removeEventListener('pointerdown', renderer.domElement._clickHandler);
+    renderer.domElement.removeEventListener('pointermove', renderer.domElement._moveHandler);
+    renderer.domElement.removeEventListener('pointerup', renderer.domElement._upHandler);
+  }
+  
+  let isDragging = false;
+  let pointerDownTime = 0;
+  
+  // Create the pointer down handler
+  renderer.domElement._clickHandler = function(event) {
+    event.preventDefault();
+    isDragging = false;
+    pointerDownTime = Date.now();
+  };
+  
+  // Create the pointer move handler
+  renderer.domElement._moveHandler = function(event) {
+    if (Date.now() - pointerDownTime > 100) { // If mouse moved after 100ms, consider it a drag
+      isDragging = true;
+    }
+  };
+  
+  // Create the pointer up handler
+  renderer.domElement._upHandler = function(event) {
+    event.preventDefault();
+    
+    // Only process click if it wasn't a drag operation
+    if (!isDragging && Date.now() - pointerDownTime < 300) { // Only consider clicks shorter than 300ms
+      console.log("Click detected (not drag)");
+      
+      // Calculate mouse position in normalized coordinates (-1 to +1)
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      console.log("Mouse coordinates:", mouse.x, mouse.y);
+      
+      // Update the raycaster
+      raycaster.setFromCamera(mouse, camera);
+      
+      // Check for intersections with the floor
+      const intersects = raycaster.intersectObject(floor);
+      console.log("Floor intersections:", intersects.length);
+      
+      if (intersects.length > 0) {
+        const point = intersects[0].point;
+        console.log("Intersection point:", point);
+        
+        const angle = Math.atan2(point.z, point.x);
+        const normalizedAngle = (angle + Math.PI) / (Math.PI * 2);
+        const timeStep = Math.floor(normalizedAngle * nSteps);
+        console.log("Opening modal with time step:", timeStep);
+        
+        openModal(timeStep);
+      }
+    }
+  };
+  
+  // Add the event listeners
+  renderer.domElement.addEventListener('pointerdown', renderer.domElement._clickHandler);
+  renderer.domElement.addEventListener('pointermove', renderer.domElement._moveHandler);
+  renderer.domElement.addEventListener('pointerup', renderer.domElement._upHandler);
+  
+  // Add lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
   scene.add(ambientLight);
   
-  const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.5);
-  directionalLight1.position.set(1, 2, 1);
+  const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+  directionalLight1.position.set(5, 8, 5);
   scene.add(directionalLight1);
   
   const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
-  directionalLight2.position.set(-1, 1, -1);
+  directionalLight2.position.set(-5, 3, -5);
   scene.add(directionalLight2);
   
-  // 为了更好地展示场景，添加一个简单的地板
-  const floorGeometry = new THREE.PlaneGeometry(30, 30);
-  const floorMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0xe0e0e0, 
+  const pointLight1 = new THREE.PointLight(0xffffff, 0.5, 20);
+  pointLight1.position.set(0, 10, 0);
+  scene.add(pointLight1);
+  
+  // Floor
+  const floorGeometry = new THREE.CircleGeometry(15, 32);
+  const floorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x111111,
     roughness: 0.9,
-    metalness: 0.1
+    metalness: 0.1,
+    emissive: 0x000000
   });
-  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = -Math.PI / 2; // 旋转使其水平
-  floor.position.y = 0;
+  floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.1;
   scene.add(floor);
   
-  // 创建基于音序器的立方体
-  createCubes();
+  // Grid lines
+  const gridLines = new THREE.GridHelper(30, 30, 0x333333, 0x222222);
+  gridLines.position.y = 0;
+  scene.add(gridLines);
   
-  // 开始动画循环
+  // addTimeMarkings();
+  
+  // Start animation loop
   animate();
 }
 
-// 创建基于音序器的立方体
-function createCubes() {
-  console.log("创建立方体...");
+function addTimeMarkings() {
+  // Create time markings in a circle around the floor
+  const radius = 15;
+  const timeSegments = nSteps;
   
-  // 清除所有立方体
-  activeCubes.forEach(cube => {
-    if (cube && scene.children.includes(cube)) {
-      scene.remove(cube);
-    }
-  });
-  
-  cubes = [];
-  activeCubes = [];
-  originalMaterials = [];
-  
-  // 创建基于音序器的立方体
-  let activeCellCount = 0;
-  
-  // 计算有多少个活跃单元格
-  let totalActiveCells = 0;
-  for(var track = 0; track < nTracks; track++) {
-    for(var step = 0; step < nSteps; step++) {
-      if(cells[track][step] == 1) {
-        totalActiveCells++;
-      }
-    }
-  }
-  
-  // 创建一个存储已使用位置的数组，用于避免方块重叠
-  const usedPositions = [];
-  
-  for(var track = 0; track < nTracks; track++) {
-    for(var step = 0; step < nSteps; step++) {
-      if(cells[track][step] == 1) {
-        activeCellCount++;
-        
-        // 计算音符属性
-        var notePos = (nTracks - 1) - track;
-        var colorIndex = notePos % 7;
-        
-        // 基于音高决定立方体高度
-        const height = 0.5 + (notePos / nTracks) * 3;
-        const width = 1.2 - (notePos / nTracks) * 0.7;
-        
-        // 创建立方体几何体
-        const geometry = new THREE.BoxGeometry(width, height, width);
-        
-        // 创建材质
-        const baseColor = new THREE.Color(colors[colorIndex]);
-        const material = new THREE.MeshStandardMaterial({
-          color: baseColor,
-          roughness: 0.7,
-          metalness: 0.1
-        });
-        
-        // 创建网格并放置
-        const cube = new THREE.Mesh(geometry, material);
-        
-        // 随机位置计算 - 在一个圆形区域内随机分布
-        let validPosition = false;
-        let attempts = 0;
-        let xPos, zPos;
-        const maxRadius = 5; // 最大半径
-        const minDistance = 1.2; // 方块之间的最小距离
-        
-        // 尝试找到一个有效的位置
-        while (!validPosition && attempts < 50) {
-          // 随机角度和半径
-          const angle = Math.random() * Math.PI * 2;
-          const radius = Math.random() * maxRadius;
-          
-          // 将极坐标转换为笛卡尔坐标
-          xPos = Math.cos(angle) * radius;
-          zPos = Math.sin(angle) * radius;
-          
-          // 检查是否与其他方块重叠
-          validPosition = true;
-          for (const pos of usedPositions) {
-            const distance = Math.sqrt(Math.pow(xPos - pos.x, 2) + Math.pow(zPos - pos.z, 2));
-            if (distance < minDistance) {
-              validPosition = false;
-              break;
-            }
-          }
-          
-          attempts++;
-        }
-        
-        // 如果找不到有效位置，就使用最后一次尝试的位置
-        const yPos = height / 2; // 立方体底部在地面上
-        
-        // 保存已使用的位置
-        usedPositions.push({ x: xPos, z: zPos });
-        
-        cube.position.set(xPos, yPos, zPos);
-        scene.add(cube);
-        
-        // 保存引用
-        if (!cubes[track]) cubes[track] = [];
-        cubes[track][step] = cube;
-        activeCubes.push(cube);
-        
-        // 保存原始材质颜色
-        originalMaterials.push({
-          cube: cube,
-          emissive: new THREE.Color(0x000000),
-          color: baseColor
-        });
-        
-        console.log(`创建音符立方体 [${track},${step}]，位置:(${xPos}, ${yPos}, ${zPos})`);
-      }
+  for (let i = 0; i < timeSegments; i++) {
+    const angle = (i / timeSegments) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    
+    // Create time marker with varying height for beat emphasis
+    const height = i % 4 === 0 ? 1.0 : 0.5; // Taller markers for beats
+    const markerGeometry = new THREE.BoxGeometry(0.2, height, 0.2);
+    const markerMaterial = new THREE.MeshBasicMaterial({ 
+      color: i % 4 === 0 ? 0xFFFFFF : 0x555555 
+    });
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    
+    marker.position.set(x, height/2, z);
+    marker.lookAt(0, 0, 0);
+    scene.add(marker);
+    
+    // Instead of text, create a small platform with color for major beats
+    if (i % 4 === 0) {
+      const platformGeometry = new THREE.BoxGeometry(0.6, 0.1, 0.6);
+      const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 });
+      const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+      
+      platform.position.set(x * 1.05, 0.05, z * 1.05);
+      scene.add(platform);
     }
   }
-  
-  console.log(`创建了 ${activeCellCount} 个音符立方体`);
 }
 
 function animate() {
   requestAnimationFrame(animate);
   
-  // Render scene
+  // Update controls
+  if (controls) {
+    controls.update();
+  }
+  
   renderer.render(scene, camera);
 }
 
-function onBeat(time){
-  // If the current beat is on, play it
-  for(var track = 0; track < nTracks; track++){
-    if(cells[track][currentStep] == 1){
-      // The bottom track should have the lowest note
-      var notePos = (nTracks - 1) - track; 
-      var octave = baseOctave + floor(notePos / 7);
-      var noteName = noteNames[notePos % 7];
-      
-      var pitch = noteName + octave;
-      player.triggerAttack(pitch, time);
-      
-      // Animate the corresponding cube
-      animateCube(track, currentStep);
-    }
+// Modal functions
+function openModal(timeValue) {
+  console.log("Opening modal...");
+  
+  // Get modal elements using vanilla JavaScript
+  const modalElement = document.getElementById('note-modal');
+  const timeSliderElement = document.getElementById('time-slider');
+  
+  if (!modalElement || !timeSliderElement) {
+    console.error("Modal elements not found!");
+    return;
   }
-  beats++;
-  currentStep = beats % nSteps;
+  
+  // Set the time slider value
+  timeSliderElement.value = timeValue;
+  console.log("Time slider value set to:", timeValue);
+  
+  // Update displays
+  updateTimeValue();
+  updatePitchValue();
+  
+  // Show the modal
+  modalElement.style.display = 'flex';
+  console.log("Modal display style set to flex");
 }
 
+function closeModal() {
+  modal.style('display', 'none');
+}
+
+function updateTimeValue() {
+  const time = parseInt(timeSlider.value());
+  const bar = Math.floor(time / 4) + 1;
+  const beat = (time % 4) + 1;
+  timeValue.html(`${bar}.${beat}`);
+}
+
+function updatePitchValue() {
+  const pitch = parseInt(pitchSlider.value());
+  const notePos = (nTracks - 1) - pitch;
+  const octave = baseOctave + Math.floor(notePos / 7);
+  const noteName = noteNames[notePos % 7];
+  
+  pitchValue.html(`${noteName}${octave}`);
+  
+  // Update keyboard visual
+  updateKeyboardHighlight(pitch);
+}
+
+function createKeyboardVisual() {
+  const keyboardVisual = select('.keyboard-visual');
+  keyboardVisual.html('');
+  
+  // Create a visual representation of the keyboard
+  for (let i = 0; i < 28; i++) {
+    const isBlackKey = [1, 3, 6, 8, 10].includes(i % 12);
+    const keyElement = createDiv();
+    keyElement.addClass(isBlackKey ? 'piano-key black' : 'piano-key white');
+    keyElement.style('display', 'inline-block');
+    keyElement.style('height', '100%');
+    keyElement.style('width', isBlackKey ? '10px' : '14px');
+    keyElement.style('background-color', isBlackKey ? '#333' : '#FFF');
+    keyElement.style('border', '1px solid #000');
+    keyElement.style('box-sizing', 'border-box');
+    keyElement.style('vertical-align', 'top');
+    keyElement.attribute('data-index', i);
+    
+    // Click event to set pitch slider value
+    keyElement.mouseClicked(() => {
+      pitchSlider.value(i);
+      updatePitchValue();
+    });
+    
+    keyboardVisual.child(keyElement);
+  }
+}
+
+function updateKeyboardHighlight(pitchValue) {
+  // Remove highlight from all keys
+  selectAll('.piano-key').forEach(key => {
+    key.style('box-shadow', 'none');
+  });
+  
+  // Add highlight to selected key
+  const keys = selectAll('.piano-key');
+  if (keys[pitchValue]) {
+    keys[pitchValue].style('box-shadow', '0 0 10px #FFF, 0 0 5px #FFF inset');
+  }
+}
+
+function addNoteFromModal() {
+  const time = parseInt(timeSlider.value());
+  const pitch = parseInt(pitchSlider.value());
+  
+  // Set the cell to 1 (ON)
+  cells[pitch][time] = 1;
+  
+  // Create the cube
+  createSingleCube(pitch, time);
+  
+  // Close the modal
+  closeModal();
+}
+
+function addRandomNote() {
+  // Generate random time step and pitch
+  const randomTime = Math.floor(Math.random() * nSteps);
+  const randomPitch = Math.floor(Math.random() * nTracks);
+  
+  // Check if this note position is already occupied
+  if (cells[randomPitch][randomTime] === 1) {
+    // Try again if position is occupied
+    return addRandomNote();
+  }
+  
+  // Set the cell to 1 (ON)
+  cells[randomPitch][randomTime] = 1;
+  
+  // Create the cube
+  createSingleCube(randomPitch, randomTime);
+}
+
+// Resize event handler
+window.addEventListener('resize', onWindowResize, false);
+
+function onWindowResize() {
+  // Update camera
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  
+  // Update renderer
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Create cube based on time and pitch
+function createSingleCube(track, step) {
+  // 计算音符属性
+  var notePos = (nTracks - 1) - track;
+  var colorIndex = notePos % 7;
+  
+  // 基于音高决定立方体高度
+  const height = 0.5 + (notePos / nTracks) * 3;
+  const width = 1.2 - (notePos / nTracks) * 0.7;
+  
+  // 创建立方体几何体
+  const geometry = new THREE.BoxGeometry(width, height, width);
+  
+  // 创建材质
+  const baseColor = new THREE.Color(colors[colorIndex]);
+  const material = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    roughness: 0.8,
+    metalness: 0.1,
+    emissive: 0x000000
+  });
+  
+  // 创建网格
+  const cube = new THREE.Mesh(geometry, material);
+  
+  // 计算位置 - 根据时间步骤计算圆上的位置
+  const radius = 5 + Math.random() * 3; // 随机半径营造一些变化
+  const angle = (step / nSteps) * Math.PI * 2;
+  const x = Math.cos(angle) * radius;
+  const z = Math.sin(angle) * radius;
+  const y = height / 2; // 立方体底部在地面上
+  
+  cube.position.set(x, y, z);
+  scene.add(cube);
+  
+  // 保存引用
+  if (!cubes[track]) cubes[track] = [];
+  cubes[track][step] = cube;
+  activeCubes.push(cube);
+  
+  // 保存原始材质颜色
+  originalMaterials.push({
+    cube: cube,
+    emissive: new THREE.Color(0x000000),
+    color: baseColor
+  });
+  
+  console.log(`创建音符立方体 [${track},${step}]，位置:(${x}, ${y}, ${z})`);
+  return cube;
+}
+
+// Remove a cube
+function removeSingleCube(track, step) {
+  const cube = cubes[track][step];
+  if (cube) {
+    // Remove from scene
+    scene.remove(cube);
+    
+    // Remove from arrays
+    const cubeIndex = activeCubes.indexOf(cube);
+    if (cubeIndex !== -1) {
+      activeCubes.splice(cubeIndex, 1);
+    }
+    
+    const materialIndex = originalMaterials.findIndex(m => m.cube === cube);
+    if (materialIndex !== -1) {
+      originalMaterials.splice(materialIndex, 1);
+    }
+    
+    // Clear reference
+    cubes[track][step] = null;
+    
+    console.log(`删除音符立方体 [${track},${step}]`);
+  }
+}
+
+// Animate a cube when it plays
 function animateCube(track, step) {
   const cube = cubes[track][step];
   if (cube) {
     // Find the original material for this cube
     const materialData = originalMaterials.find(m => m.cube === cube);
     if (materialData) {
-      // 激活发光效果，乘以1.5让亮度更高
-      const glowColor = materialData.color.clone().multiplyScalar(1.5);
-      cube.material.emissive = glowColor;
-      
       // 轻微的动画
       const originalY = cube.position.y;
-      const jumpHeight = 0.8; // 减小跳跃高度
+      const jumpHeight = 1.5;
       
       // 简单的跳跃动画
       const frames = 20;
@@ -333,235 +560,58 @@ function animateCube(track, step) {
       };
       
       jumpAnimation();
+    }
+  }
+}
+
+function onBeat(time){
+  // If the current beat is on, play it
+  for(var track = 0; track < nTracks; track++){
+    if(cells[track][currentStep] == 1){
+      // The bottom track should have the lowest note
+      var notePos = (nTracks - 1) - track; 
+      var octave = baseOctave + Math.floor(notePos / 7);
+      var noteName = noteNames[notePos % 7];
       
-      // 逐渐淡出发光效果
-      setTimeout(() => {
-        if (cube) {
-          // Create fade animation
-          const fadeOut = () => {
-            // Reduce emissive intensity
-            const currentEmissive = cube.material.emissive;
-            currentEmissive.r *= 0.9;
-            currentEmissive.g *= 0.9;
-            currentEmissive.b *= 0.9;
-            
-            if (currentEmissive.r > 0.01 || currentEmissive.g > 0.01 || currentEmissive.b > 0.01) {
-              requestAnimationFrame(fadeOut);
-            } else {
-              cube.material.emissive.set(0x000000);
-            }
-          };
-          fadeOut();
-        }
-      }, 100);
+      var pitch = noteName + octave;
+      player.triggerAttack(pitch, time);
+      
+      // Animate the corresponding cube
+      animateCube(track, currentStep);
     }
   }
+  beats++;
+  currentStep = beats % nSteps;
 }
 
-function draw(){
-  background(255);
-  
-  // Draw cells that are on
-  for(var step = 0; step < nSteps; step++){
-    for(var track = 0; track < nTracks; track++){
-      if(cells[track][step] == 1){
-        var notePos = nTracks - 1 - track; 
-        var col = colors[notePos % 7];
-        fill(col);
-        rect(l+ step*cellWidth, t + track*cellHeight, cellWidth, cellHeight);
-      }
-    }
-  }
-  
-  stroke(blue);
-  // Draw horizontal lines
-  for(var i = 0; i <= nTracks; i++){
-    var y = t + i*cellHeight;
-    right = width - l;
-    
-    // If we are at the end of the octave, draw a thicker line. 
-    if(i % 7 == 0 && 0 < i && i < nTracks){
-      strokeWeight(2);
-    }
-    else{
-      strokeWeight(0.5);
-    }
-    
-    line(l, y, right, y);
-  }
-  
-  // Draw vertical lines
-  for(var i = 0; i <= nSteps; i++){
-    
-    // If a step is on an odd bar, draw a shading rect
-    var bar = floor(i / beatsPerBar);
-    if( bar % 2 == 1 & i < nSteps){
-      //shade
-      noStroke();
-      fill(0, 10);
-      rect(l + i*cellWidth, t, cellWidth, gridHeight);
-    }
-    
-    stroke(blue);
-    // If a step is a beat, draw a thicker line. If it is a subdivision, draw a thinner line
-    if(i % splitBeatsInto == 0){
-      strokeWeight(1);
-    }
-    else{
-      strokeWeight(0.5);
-    }
-    var x = i*cellWidth;
-    line(l + x, t, l + x, t + gridHeight);
-  }
-  
-  // Highlight current step
-  if(beats > 0){
-  	var highlight = (beats - 1) % nSteps;
-    fill(178, 223, 247, 50);
-    noStroke();
-    rect(l + highlight * cellWidth, t, cellWidth, gridHeight)
-  }
-}
+// Colors for the cubes
+var colors = ["#FFFFFF", "#EEEEEE", "#DDDDDD", "#CCCCCC", "#BBBBBB", "#AAAAAA", "#999999"];
 
-// 创建单个立方体的函数
-function createSingleCube(track, step) {
-  // 计算音符属性
-  var notePos = (nTracks - 1) - track;
-  var colorIndex = notePos % 7;
-  
-  // 基于音高决定立方体高度
-  const height = 0.5 + (notePos / nTracks) * 3;
-  const width = 1.2 - (notePos / nTracks) * 0.7;
-  
-  // 创建立方体几何体
-  const geometry = new THREE.BoxGeometry(width, height, width);
-  
-  // 创建材质
-  const baseColor = new THREE.Color(colors[colorIndex]);
-  const material = new THREE.MeshStandardMaterial({
-    color: baseColor,
-    roughness: 0.7,
-    metalness: 0.1
-  });
-  
-  // 创建网格并放置
-  const cube = new THREE.Mesh(geometry, material);
-  
-  // 随机位置计算 - 在一个圆形区域内随机分布
-  let validPosition = false;
-  let attempts = 0;
-  let xPos, zPos;
-  const maxRadius = 5; // 最大半径
-  const minDistance = 1.2; // 方块之间的最小距离
-  
-  // 尝试找到一个有效的位置
-  while (!validPosition && attempts < 50) {
-    // 随机角度和半径
-    const angle = Math.random() * Math.PI * 2;
-    const radius = Math.random() * maxRadius;
-    
-    // 将极坐标转换为笛卡尔坐标
-    xPos = Math.cos(angle) * radius;
-    zPos = Math.sin(angle) * radius;
-    
-    // 检查是否与其他方块重叠
-    validPosition = true;
-    for (const cube of activeCubes) {
-      if (!cube) continue;
-      const distance = Math.sqrt(
-        Math.pow(xPos - cube.position.x, 2) + 
-        Math.pow(zPos - cube.position.z, 2)
-      );
-      if (distance < minDistance) {
-        validPosition = false;
-        break;
-      }
-    }
-    
-    attempts++;
+// Empty draw function since we don't need p5 rendering anymore
+function draw() {}
+
+async function togglePlay() {
+  // Start audio context on first click
+  if (Tone.context.state !== 'running') {
+    await Tone.start();
   }
   
-  const yPos = height / 2; // 立方体底部在地面上
-  cube.position.set(xPos, yPos, zPos);
-  scene.add(cube);
-  
-  // 保存引用
-  if (!cubes[track]) cubes[track] = [];
-  cubes[track][step] = cube;
-  activeCubes.push(cube);
-  
-  // 保存原始材质颜色
-  originalMaterials.push({
-    cube: cube,
-    emissive: new THREE.Color(0x000000),
-    color: baseColor
-  });
-  
-  console.log(`创建音符立方体 [${track},${step}]，位置:(${xPos}, ${yPos}, ${zPos})`);
-  return cube;
-}
-
-// 删除单个立方体的函数
-function removeSingleCube(track, step) {
-  const cube = cubes[track][step];
-  if (cube) {
-    // 从场景中移除
-    scene.remove(cube);
-    
-    // 从活跃立方体数组中移除
-    const cubeIndex = activeCubes.indexOf(cube);
-    if (cubeIndex !== -1) {
-      activeCubes.splice(cubeIndex, 1);
-    }
-    
-    // 从原始材质数组中移除
-    const materialIndex = originalMaterials.findIndex(m => m.cube === cube);
-    if (materialIndex !== -1) {
-      originalMaterials.splice(materialIndex, 1);
-    }
-    
-    // 清除引用
-    cubes[track][step] = null;
-    
-    console.log(`删除音符立方体 [${track},${step}]`);
+  // 切换播放/暂停状态和按钮图标
+  if (Tone.Transport.state === 'started') {
+    Tone.Transport.pause();
+    playButton.html("<i class='fas fa-play'></i>");
+  } else {
+    Tone.Transport.start();
+    playButton.html("<i class='fas fa-pause'></i>");
   }
-}
-
-function mousePressed(){
-  // If the mouse is within the bounds of the canvas
-  if( l < mouseX && mouseX < l + gridWidth &&
-      t < mouseY && mouseY < t + gridHeight){
-    // Account for margins
-    var x = mouseX - l;
-    var y = mouseY - t;
-    
-    // Determine which cell the mouse is on
-    var i = floor(y / cellHeight);
-    var j = floor(x / cellWidth);
-    
-    // 检查当前单元格的状态
-    const currentState = cells[i][j];
-    
-    // Toggle cell on/off
-    cells[i][j] = !currentState;
-    
-    // 根据新状态添加或删除立方体
-    if (cells[i][j]) {
-      // 添加立方体
-      createSingleCube(i, j);
-    } else {
-      // 删除立方体
-      removeSingleCube(i, j);
-    }
-  }
-}
-
-function togglePlay() {
-  Tone.Transport.toggle();
 }
 
 function updateTempo(){
-  if(tempoSlider){
-    Tone.Transport.bpm.rampTo(tempoSlider.value(), 0.1);
-  }
+  let tempoValue = tempoSlider ? tempoSlider.value() : bpm;
+  
+  // 更新音频引擎的速度
+  Tone.Transport.bpm.rampTo(tempoValue, 0.1);
+  
+  // 更新显示
+  document.querySelector('.tempo-value').innerText = tempoValue + " BPM";
 }

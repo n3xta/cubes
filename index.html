@@ -7,13 +7,96 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8" />
-
+    <title>MELODY.SYS</title>
   </head>
   <body>
-    <div id="p5-container"></div>
+    <div class="terminal-header">
+      > SOUND SYSTEM ONLINE...
+      > READY <span class="blink">_</span>
+    </div>
+    
+    <div class="pixel-decoration top-left">
+      /* MINIMAL MODE ACTIVE */
+      system.melody.initialize();
+      audio: ready
+      interface: ready
+    </div>
+    
+    <div class="pixel-decoration bottom-right">
+      ■ ■ ■ ■
+      Press <span class="key">SPACE</span> to play/pause
+      Click in 3D space to add notes
+      ■ ■ ■ ■
+    </div>
+    
+    <!-- Note addition modal -->
+    <div id="note-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>ADD NEW NOTE</h3>
+          <span class="close-btn"><i class="fas fa-times"></i></span>
+        </div>
+        <div class="modal-body">
+          <div class="slider-container">
+            <label>TIME <span id="time-value">0</span></label>
+            <input type="range" id="time-slider" min="0" max="15" value="0">
+            <div class="slider-ticks">
+              <div class="tick">0</div>
+              <div class="tick">4</div>
+              <div class="tick">8</div>
+              <div class="tick">12</div>
+              <div class="tick">15</div>
+            </div>
+          </div>
+          
+          <div class="slider-container">
+            <label>PITCH <span id="pitch-value">C1</span></label>
+            <input type="range" id="pitch-slider" min="0" max="27" value="14">
+            <div class="pitch-visual">
+              <div class="keyboard-wrapper">
+                <div class="keyboard-visual"></div>
+              </div>
+            </div>
+          </div>
+          
+          <button id="add-note-btn" class="modal-btn"><i class="fas fa-plus"></i> ADD NOTE</button>
+        </div>
+      </div>
+    </div>
+    
     <div id="three-container"></div>
+    <div id="p5-container"></div>
+    <div class="controls">
+      <div id="play-button"></div>
+      <div id="tempo-control">
+        <span><i class="fas fa-sliders-h"></i> TEMPO</span>
+        <div id="tempo-slider"></div>
+        <div class="tempo-value">80 BPM</div>
+      </div>
+      <div id="random-note">
+        <button id="random-btn" class="random-btn"><i class="fas fa-dice"></i> RANDOM</button>
+      </div>
+    </div>
     <script src="sketch.js"></script>
+    <script>
+      // Verify modal elements on page load
+      window.addEventListener('load', function() {
+        console.log("Page loaded, checking modal elements...");
+        const modalElement = document.getElementById('note-modal');
+        console.log("Modal element:", modalElement);
+        
+        const timeSlider = document.getElementById('time-slider');
+        console.log("Time slider:", timeSlider);
+        
+        const pitchSlider = document.getElementById('pitch-slider');
+        console.log("Pitch slider:", pitchSlider);
+        
+        const addNoteBtn = document.getElementById('add-note-btn');
+        console.log("Add note button:", addNoteBtn);
+      });
+    </script>
   </body>
 </html>

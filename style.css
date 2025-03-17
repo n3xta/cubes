@@ -1,19 +1,428 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap');
+
 html, body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'VT323', monospace;
+  background: #000;
+  color: #fff;
+}
+
+body {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: 100vh;
-  overflow: hidden;
+  justify-content: center;
 }
 
-#p5-container, #three-container {
-  width: 600px;
-  height: 300px;
-  margin: 10px 0;
+#three-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+#three-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#p5-container {
+  position: relative;
+  height: 70vh;
+  max-width: 1400px;
+  z-index: 2;
+  background: rgba(10, 10, 10, 0.5);
+  border-radius: 0px;
+  display: none; /* Hide the p5 container since we don't need the sequencer */
+}
+
+/* 轻微的扫描线效果 - 静谧版 */
+#p5-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    rgba(255, 255, 255, 0.03) 50%, 
+    rgba(255, 255, 255, 0) 50%
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.1;
+}
+
+/* 微妙的边缘变暗效果 */
+#p5-container::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.3) 90%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.2;
+}
+
+.controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  padding: 15px;
+  width: fit-content;
+  background: #000;
+  border: 2px solid #333;
+  border-radius: 0;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 12px;
+}
+
+.controls::before {
+  content: "[ CONTROLS ]";
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: #000;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #fff;
+}
+
+#tempo-control {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+#tempo-control span {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #ccc;
+}
+
+#tempo-control span i {
+  margin-right: 5px;
+  color: #fff;
+}
+
+.tempo-value {
+  min-width: 100px;
+  font-size: 14px;
+  color: #fff;
+  background: #000;
+  padding: 8px;
+  border: 1px solid #333;
+  text-align: center;
+  font-family: 'VT323', monospace;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 400;
+  border: 2px solid #333;
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Press Start 2P', cursive;
+  text-transform: uppercase;
+}
+
+button.play-btn {
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+}
+
+button.play-btn i {
+  font-size: 24px;
+}
+
+button.random-btn {
+  padding: 10px 15px;
+  background-color: #222;
+  color: #ddd;
+  border-color: #444;
+}
+
+button.random-btn i {
+  margin-right: 8px;
+}
+
+button.random-btn:hover {
+  background-color: #333;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+}
+
+button:hover {
+  background: #333;
+  color: #fff;
+}
+
+button:active {
+  transform: translateY(2px);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 200px;
+  height: 6px;
+  background: #000;
+  border: 1px solid #333;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: none;
+  cursor: pointer;
 }
 
 canvas {
   display: block;
+  image-rendering: pixelated;
+}
+
+/* 像素风格的标题 - 黑白版 */
+.terminal-header {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ccc;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 12px;
+  white-space: pre;
+  z-index: 3;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* 闪烁的光标效果 */
+.blink {
+  animation: blink-animation 1s steps(2, start) infinite;
+}
+
+@keyframes blink-animation {
+  to {
+    visibility: hidden;
+  }
+}
+
+.pixel-decoration {
+  position: absolute;
+  color: #575757;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.top-left {
+  top: 10px;
+  left: 10px;
+}
+
+.bottom-right {
+  bottom: 10px;
+  right: 10px;
+}
+
+.key {
+  display: inline-block;
+  padding: 2px 4px;
+  font-size: 0.9em;
+  background-color: #333;
+  color: #FFF;
+  border: 1px solid #555;
+  font-family: 'VT323', monospace;
+}
+
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+  animation: modal-appear 0.3s ease;
+  pointer-events: auto;
+}
+
+@keyframes modal-appear {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal-content {
+  background-color: #111;
+  border: 2px solid #444;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  width: 90%;
+  max-width: 400px;
+  padding: 0;
+  position: relative;
+  font-family: 'VT323', monospace;
+  animation: modal-content-appear 0.3s ease-out;
+  image-rendering: pixelated;
+  pointer-events: auto;
+}
+
+@keyframes modal-content-appear {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header {
+  padding: 15px;
+  background-color: #222;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #444;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.close-btn {
+  font-size: 20px;
+  cursor: pointer;
+  color: #aaa;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.modal-body {
+  padding: 20px;
+  color: #eee;
+}
+
+.slider-container {
+  margin-bottom: 25px;
+}
+
+.slider-container label {
+  display: block;
+  margin-bottom: 10px;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #aaa;
+}
+
+.slider-container label span {
+  margin-left: 10px;
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+  color: #fff;
+}
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  color: #666;
+  font-size: 12px;
+}
+
+.pitch-visual {
+  margin-top: 10px;
+  height: 60px;
+  position: relative;
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+.keyboard-wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.keyboard-visual {
+  display: inline-flex;
+  height: 100%;
+  min-width: 100%;
+}
+
+.modal-btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 20px;
+  background-color: #333;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 14px;
+  transition: all 0.2s;
+  animation: pulse 2s infinite;
+}
+
+.modal-btn:hover {
+  background-color: #555;
+  transform: scale(1.02);
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.2); }
+  70% { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
 }
